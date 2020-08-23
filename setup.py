@@ -6,13 +6,13 @@ this_directory = path.abspath(path.dirname(__file__))
 with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-setup(name='hh_cv_updater',
-      version='0.1.1',
-      description='Tool which updates your CV on hh.ru every 4 hours',
+setup(name='workua_cv_updater',
+      version='0.1.0',
+      description='Tool which updates your CV on work.ua',
       url='https://github.com/danilasokolov0103/CV_updater',
       author='Danila Sokolov',
       author_email='danilasokolov0103@gmail.com',
-      packages=['hh_cv_updater'],
+      packages=['workua_cv_updater'],
       python_requires='>=3.5.3',
       setup_requires=[
           'wheel',
@@ -23,7 +23,7 @@ setup(name='hh_cv_updater',
       ],
       entry_points={
           'console_scripts': [
-              'hh-cv-updater=hh_cv_updater.__main__:main',
+              'workua-cv-updater=workua_cv_updater.__main__:main',
           ],
       },
       classifiers=[

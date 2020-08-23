@@ -1,7 +1,7 @@
-hh-cv-updater
+workua-cv-updater
 =============
 
-Python script to update your CV on https://hh.ru/ every 4 hours.
+Python script to update your CV on https://work.ua/
 
 ## Requirements 
 
@@ -13,14 +13,14 @@ Run within source directory:
 
 `pip3 install .`
 
-`hh-cv-updater` executable command should become immediately available. Alternatively, you may invoke application with `python3 -m hh_cv_updater ...` command
+`workua-cv-updater` executable command should become immediately available. Alternatively, you may invoke application with `python3 -m workua_cv_updater ...` command
 
 ## Set your account
 
 Run:
 
 ```
-hh-cv-updater login
+workua-cv-updater login
 ```
 
 Browser window will pop up, prompting user to login. Once login will be acknowledged by application, browser window will be closed.
@@ -30,7 +30,7 @@ Browser window will pop up, prompting user to login. Once login will be acknowle
 Run:
 
 ```
-hh-cv-updater update
+workua-cv-updater update
 ```
 
 Application will be running continously, updating all your CV's in random intervals about to 4 hours. If application is being restarted, it will figure out next update from own records on last update.
@@ -38,9 +38,9 @@ Application will be running continously, updating all your CV's in random interv
 ## Datadir structure
 
 ```
-~/.config/hh-cv-updater
-├── hhautomate.db # SQLite database with last update timestamp
-└── profile       # browser profile
+~/.config/workua-cv-updater
+├── updater.db # SQLite database with last update timestamp
+└── profile    # browser profile
 ```
 
 ## Running on remote server
@@ -51,8 +51,8 @@ Application will be running continously, updating all your CV's in random interv
 ## Synopsis
 
 ```
-$ hh-cv-updater -h
-usage: hh-cv-updater [-h] [-t TIMEOUT] [-b {chrome,chromium}]
+$ workua-cv-updater -h
+usage: workua-cv-updater [-h] [-t TIMEOUT] [-b {chrome,chromium}]
                      [-v {debug,info,warn,error,fatal}] [-d FILE]
                      {login,update}
 
@@ -71,5 +71,5 @@ optional arguments:
                         logging verbosity (default: info)
   -d FILE, --data-dir FILE
                         application datadir location (default:
-                        ~/.config/hh-cv-updater)
+                        ~/.config/workua-cv-updater)
 ```

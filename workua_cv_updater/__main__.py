@@ -198,7 +198,7 @@ def parse_args():
     parser.add_argument("-d", "--data-dir",
                         default=os.path.join(os.path.expanduser("~"),
                                              '.config',
-                                             'hh-cv-updater'),
+                                             'workua-cv-updater'),
                         help="application datadir location",
                         metavar="FILE")
     return parser.parse_args()
@@ -320,7 +320,7 @@ def main():
     elif args.cmd is Command.update:
         mainlogger.info("Update mode. Running headless browser.")
         signal.signal(signal.SIGTERM, sig_handler)
-        db_path = os.path.join(args.data_dir, 'hhautomate.db')
+        db_path = os.path.join(args.data_dir, 'updater.db')
         tracker = UpdateTracker(db_path)
         try:
             update_loop(browser_factory, tracker, args.timeout)
