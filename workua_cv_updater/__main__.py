@@ -27,9 +27,7 @@ from webdriver_manager.utils import ChromeType
 RESUME_LIST_URL = "https://www.work.ua/ru/jobseeker/my/resumes/"
 LOGIN_URL = "https://www.work.ua/jobseeker/login/"
 POST_LOGIN_URL = "https://www.work.ua/ru/jobseeker/my/"
-#UPDATE_BUTTON_XPATH = "//button[@data-qa='resume-update-button']"
-#UPDATE_LINK_FILTER_CLASS = "bloko-link"
-#UPDATE_SPAN_INACTIVE_CLASS = "applicant-resumes-update-button_disabled"
+UPDATE_BUTTON_XPATH = "//a[contains(@href, '/update/expire_date')]"
 UPDATE_INTERVAL = 7 * 24 * 3600
 UPDATE_INTERVAL_MIN_DRIFT = 10
 UPDATE_INTERVAL_MAX_DRIFT = 60
@@ -85,56 +83,34 @@ class BrowserType(enum.Enum):
     def __str__(self):
         return self.name
 
-def has_class(elem, cls):
-    return cls in elem.get_attribute("class").split()
-
-def locate_active_buttons(browser):
-    """ Locates active update CV buttons.
-    Class filter selects only bottom links. """
-    for elem in browser.find_elements_by_xpath(UPDATE_BUTTON_XPATH):
-        if has_class(elem, UPDATE_LINK_FILTER_CLASS):
-            parent = elem.find_element_by_xpath('..')
-            if not has_class(parent, UPDATE_SPAN_INACTIVE_CLASS):
-                yield elem
-
-def buttons_disabled_condition(browser):
-    for _ in locate_active_buttons(browser):
-        return False
-    else:
-        return True
-
-#button_wait_condition = EC.presence_of_element_located((By.XPATH, UPDATE_BUTTON_XPATH))
-
 def update(browser, timeout):
     logger = logging.getLogger("UPDATE")
-    logger.error("Not implemented!")
-    return
     browser.get(RESUME_LIST_URL)
-    wait_page_to_load = WebDriverWait(browser, timeout).until(
-        button_wait_condition
-    )
-    update_buttons = list(locate_active_buttons(browser))
-    logger.info("Located %d update buttons", len(update_buttons))
-    for elem in update_buttons:
-        sleep(1 + 2 * random())
-        try:
+    visited_urls = set()
+    while True:
+        for elem in browser.find_elements_by_xpath(UPDATE_BUTTON_XPATH):
+            href = elem.get_attribute("href")
+            logger.debug("Update link href = %s", repr(href))
+            if href in visited_urls:
+                continue
+            sleep(1 + 2 * random())
             elem.click()
-        except ElementClickInterceptedException:
-            logger.info("Click intercepted. Probably CV is already updated "
-                        "and button is disabled.")
-        logger.debug('click!')
-    WebDriverWait(browser, timeout,
-                  ignored_exceptions=(
-                    StaleElementReferenceException,
-                    NoSuchElementException
-                  )).\
-        until(buttons_disabled_condition)
+            logger.debug("Clicked!")
+            WebDriverWait(browser, timeout).until(
+                EC.staleness_of(elem)
+            )
+            WebDriverWait(browser, timeout).until(
+                EC.url_to_be(RESUME_LIST_URL)
+            )
+            break
+        else:
+            break
     logger.info('Updated!')
 
 def login(browser):
     logger = logging.getLogger("LOGIN")
     browser.get(LOGIN_URL)
-    wait_page_to_load = WebDriverWait(browser, 3600).until(
+    WebDriverWait(browser, 3600).until(
         EC.url_to_be(POST_LOGIN_URL)
     )
     logger.info('Successfully logged in!')
