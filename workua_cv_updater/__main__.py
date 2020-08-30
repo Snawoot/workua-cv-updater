@@ -26,8 +26,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.utils import ChromeType
 
 RESUME_LIST_URL = "https://www.work.ua/ru/jobseeker/my/resumes/"
+RESUME_LIST_URL_PATTERN = r"^https://www\.work\.ua/(ru/)?jobseeker/my/resumes/?$"
 LOGIN_URL = "https://www.work.ua/jobseeker/login/"
-POST_LOGIN_URL = "https://www.work.ua/ru/jobseeker/my/"
+POST_LOGIN_URL_PATTERN = r"^https://www\.work\.ua/(ru/)?jobseeker/my/?$"
 UPDATE_BUTTON_XPATH = "//a[contains(@href, '/update/expire_date')]"
 UPDATE_INTERVAL = 7 * 24 * 3600
 UPDATE_INTERVAL_MIN_DRIFT = 10
@@ -110,7 +111,7 @@ def update(browser, timeout):
                 EC.staleness_of(elem)
             )
             WebDriverWait(browser, timeout).until(
-                EC.url_to_be(RESUME_LIST_URL)
+                EC.url_matches(RESUME_LIST_URL_PATTERN)
             )
             break
         else:
@@ -121,7 +122,7 @@ def login(browser, timeout):
     logger = logging.getLogger("LOGIN")
     browser.get(LOGIN_URL)
     WebDriverWait(browser, timeout).until(
-        EC.url_to_be(POST_LOGIN_URL)
+        EC.url_matches(POST_LOGIN_URL_PATTERN)
     )
     logger.info('Successfully logged in!')
 
