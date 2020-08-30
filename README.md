@@ -1,7 +1,7 @@
 workua-cv-updater
 =============
 
-Python script to update your CV on https://work.ua/
+Python script to update your CV on https://work.ua/ every week.
 
 ## Requirements 
 
@@ -33,7 +33,7 @@ Run:
 workua-cv-updater update
 ```
 
-Application will be running continously, updating all your CV's in random intervals about to 4 hours. If application is being restarted, it will figure out next update from own records on last update.
+Application will be running continously, updating all your CV's in random intervals about to 1 week. If application is being restarted, it will figure out next update from own records on last update.
 
 ## Datadir structure
 
