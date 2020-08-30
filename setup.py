@@ -7,7 +7,7 @@ with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(name='workua_cv_updater',
-      version='0.1.0',
+      version='0.1.1',
       description='Tool which updates your CV on work.ua',
       url='https://github.com/danilasokolov0103/CV_updater',
       author='Danila Sokolov',
