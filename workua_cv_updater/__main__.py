@@ -9,7 +9,8 @@ import sqlite3
 import signal
 from time import sleep, time, ctime
 from random import randrange, random
-from urllib.parse import urlparse, urlunparse, urlencode
+import collections
+from heapq import merge
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -31,6 +32,10 @@ UPDATE_BUTTON_XPATH = "//a[contains(@href, '/update/expire_date')]"
 UPDATE_INTERVAL = 7 * 24 * 3600
 UPDATE_INTERVAL_MIN_DRIFT = 10
 UPDATE_INTERVAL_MAX_DRIFT = 60
+SESSION_REFRESH_INTERVAL = 4 * 3600
+SESSION_REFRESH_INTERVAL_MIN_DRIFT = 10
+SESSION_REFRESH_INTERVAL_MAX_DRIFT = 60
+MANUAL_LOGIN_TIMEOUT = 3600
 
 DB_INIT = [
     "CREATE TABLE IF NOT EXISTS update_ts (\n"
@@ -38,12 +43,11 @@ DB_INIT = [
     "value REAL NOT NULL DEFAULT 0)\n"
 ]
 
-def wall_clock_sleep(duration, precision=1.):
+def wall_clock_wait(when, precision=1.):
     """ Sleep variation which is doesn't increases
     sleep duration when computer enters suspend/hybernation
     """
-    end_time = time() + duration
-    while time() < end_time:
+    while time() < when:
         sleep(precision)
 
 def setup_logger(name, verbosity):
@@ -83,6 +87,12 @@ class BrowserType(enum.Enum):
     def __str__(self):
         return self.name
 
+class ScheduledEvent(enum.Enum):
+    REFRESH = 1
+    UPDATE = 2
+
+ScheduleEntry = collections.namedtuple('ScheduleEntry', ('when', 'what'))
+
 def update(browser, timeout):
     logger = logging.getLogger("UPDATE")
     browser.get(RESUME_LIST_URL)
@@ -107,10 +117,10 @@ def update(browser, timeout):
             break
     logger.info('Updated!')
 
-def login(browser):
+def login(browser, timeout):
     logger = logging.getLogger("LOGIN")
     browser.get(LOGIN_URL)
-    WebDriverWait(browser, 3600).until(
+    WebDriverWait(browser, timeout).until(
         EC.url_to_be(POST_LOGIN_URL)
     )
     logger.info('Successfully logged in!')
@@ -204,6 +214,11 @@ class UpdateTracker:
                 cur.execute("INSERT INTO update_ts (name, value) VALUES (?,?)",
                             ("last", 0.))
                 conn.commit()
+            cur.execute("SELECT 1 FROM update_ts WHERE name = ?", ("login",))
+            if cur.fetchone() is None:
+                cur.execute("INSERT INTO update_ts (name, value) VALUES (?,?)",
+                            ("login", 0.))
+                conn.commit()
         finally:
             cur.close()
         self._conn = conn
@@ -217,20 +232,72 @@ class UpdateTracker:
         finally:
             cur.close()
 
+    def last_login(self):
+        cur = self._conn.cursor()
+        try:
+            cur.execute("SELECT value FROM update_ts WHERE name = ?",
+                        ("login",))
+            return cur.fetchone()[0]
+        finally:
+            cur.close()
+
     def update(self, ts):
         c = self._conn
         with c:
             c.execute("UPDATE update_ts SET value = ? WHERE name = ? AND value < ?",
                       (float(ts), "last", float(ts)))
 
+    def login(self, ts):
+        c = self._conn
+        with c:
+            c.execute("UPDATE update_ts SET value = ? WHERE name = ? AND value < ?",
+                      (float(ts), "login", float(ts)))
+
     def close(self):
         self._conn.close()
         self._conn = None
 
-def do_login(browser_factory):
+def random_interval(base, min_drift, max_drift):
+    return base + min_drift + random() * (max_drift - min_drift)
+
+class Scheduler:
+    def __init__(self, last_login, last_update):
+        self._it = self._iter_events(last_login, last_update)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._it)
+
+    @staticmethod
+    def _event_stream(token, last_occured, base, min_drift, max_drift):
+        t = max(last_occured + random_interval(base, min_drift, max_drift), time())
+        yield ScheduleEntry(when=t, what=token)
+        while True:
+            t += random_interval(base, min_drift, max_drift)
+            yield ScheduleEntry(when=t, what=token)
+
+    @staticmethod
+    def _iter_events(last_login, last_update):
+        return merge(
+            Scheduler._event_stream(ScheduledEvent.REFRESH,
+                                    last_login,
+                                    SESSION_REFRESH_INTERVAL,
+                                    SESSION_REFRESH_INTERVAL_MIN_DRIFT,
+                                    SESSION_REFRESH_INTERVAL_MAX_DRIFT),
+            Scheduler._event_stream(ScheduledEvent.UPDATE,
+                                    last_update,
+                                    UPDATE_INTERVAL,
+                                    UPDATE_INTERVAL_MIN_DRIFT,
+                                    UPDATE_INTERVAL_MAX_DRIFT),
+            key=lambda ev: ev.when
+        )
+
+def do_login(browser_factory, timeout):
     browser = browser_factory.new()
     try:
-        login(browser)
+        login(browser, timeout)
     finally:
         browser.quit()
 
@@ -241,32 +308,31 @@ def do_update(browser_factory, timeout):
     finally:
         browser.quit()
 
-def random_interval():
-    return UPDATE_INTERVAL + UPDATE_INTERVAL_MIN_DRIFT + \
-        random() * (UPDATE_INTERVAL_MAX_DRIFT - UPDATE_INTERVAL_MIN_DRIFT)
-
 def update_loop(browser_factory, tracker, timeout):
-    logger = logging.getLogger("UPDATE")
-    last_ts = tracker.last_update()
-    logger.info("Starting scheduler. Last update @ %.3f (%s)",
-                last_ts, ctime(last_ts))
-    delay = last_ts + random_interval() - time()
-    if delay > 0:
-        logger.info("Waiting %.3f seconds for next update...", delay)
-        wall_clock_sleep(delay)
-    while True:
+    logger = logging.getLogger("EVLOOP")
+    last_update = tracker.last_update()
+    last_login = tracker.last_login()
+    logger.info("Starting scheduler. "
+                "Last update @ %.3f (%s); last refresh @ %.3f (%s).",
+                last_update, ctime(last_update),
+                last_login, ctime(last_login))
+    for ev in Scheduler(last_login, last_update):
+        logger.info("Next event is %s @ %.3f (%s)",
+                    ev.what.name, ev.when, ctime(ev.when))
+        wall_clock_wait(ev.when)
         try:
-            logger.info("Updating now!")
-            do_update(browser_factory, timeout)
+            if ev.what is ScheduledEvent.REFRESH:
+                logger.info("Refreshing session now!")
+                do_login(browser_factory, timeout)
+                tracker.login(time())
+            elif ev.what is ScheduledEvent.UPDATE:
+                logger.info("Updating CVs now!")
+                do_update(browser_factory, timeout)
+                tracker.update(time())
         except KeyboardInterrupt:
-            raise
+            pass
         except Exception as exc:
-            logger.exception("Update failed: %s", str(exc))
-        else:
-            tracker.update(time())
-        delay = random_interval()
-        logger.info("Waiting %.3f seconds for next update...", delay)
-        wall_clock_sleep(delay)
+            logger.exception("Event %s handling failed: %s", ev.what.name, str(exc))
 
 def sig_handler(signum, frame):
     raise KeyboardInterrupt
@@ -276,29 +342,36 @@ def main():
     mainlogger = setup_logger("MAIN", args.verbosity)
     setup_logger("UPDATE", args.verbosity)
     setup_logger("LOGIN", args.verbosity)
+    setup_logger("EVLOOP", args.verbosity)
 
     os.makedirs(args.data_dir, mode=0o700, exist_ok=True)
     profile_dir = os.path.join(args.data_dir, 'profile')
     browser_factory = BrowserFactory(profile_dir,
                                      args.browser.value,
                                      args.cmd is Command.update)
+    db_path = os.path.join(args.data_dir, 'updater.db')
+    tracker = UpdateTracker(db_path)
+    signal.signal(signal.SIGTERM, sig_handler)
 
-    if args.cmd is Command.login:
-        mainlogger.info("Login mode. Please enter your credentials in opened "
-                        "browser window.")
-        do_login(browser_factory)
-    elif args.cmd is Command.update:
-        mainlogger.info("Update mode. Running headless browser.")
-        signal.signal(signal.SIGTERM, sig_handler)
-        db_path = os.path.join(args.data_dir, 'updater.db')
-        tracker = UpdateTracker(db_path)
-        try:
-            update_loop(browser_factory, tracker, args.timeout)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            mainlogger.info("Shutting down...")
-            tracker.close()
+    try:
+        if args.cmd is Command.login:
+            mainlogger.info("Login mode. Please enter your credentials in opened "
+                            "browser window.")
+            try:
+                do_login(browser_factory, MANUAL_LOGIN_TIMEOUT)
+                tracker.login(time())
+            except KeyboardInterrupt:
+                mainlogger.warning("Interrupted!")
+        elif args.cmd is Command.update:
+            mainlogger.info("Update mode. Running headless browser.")
+            try:
+                update_loop(browser_factory, tracker, args.timeout)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                mainlogger.info("Shutting down...")
+    finally:
+        tracker.close()
 
 if __name__ == "__main__":
     main()
