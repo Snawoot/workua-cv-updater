@@ -331,7 +331,7 @@ def update_loop(browser_factory, tracker, timeout):
                 do_update(browser_factory, timeout)
                 tracker.update(time())
         except KeyboardInterrupt:
-            pass
+            raise
         except Exception as exc:
             logger.exception("Event %s handling failed: %s", ev.what.name, str(exc))
 
