@@ -29,7 +29,9 @@ RESUME_LIST_URL = "https://www.work.ua/ru/jobseeker/my/resumes/"
 RESUME_LIST_URL_PATTERN = r"^https://www\.work\.ua/(ru/)?jobseeker/my/resumes/?$"
 LOGIN_URL = "https://www.work.ua/jobseeker/login/"
 POST_LOGIN_URL_PATTERN = r"^https://www\.work\.ua/(ru/)?jobseeker/my/?$"
+CREATE_URL_PATTERN = r"^https://www.work.ua/(ru/)?jobseeker/my/resumes/create/?(\?.*)?$"
 UPDATE_BUTTON_XPATH = "//a[contains(@href, '/update/expire_date')]"
+CREATE_BUTTON_XPATH = "//a[contains(@href, '/jobseeker/my/resumes/create')]"
 UPDATE_INTERVAL = 7 * 24 * 3600
 UPDATE_INTERVAL_MIN_DRIFT = 10
 UPDATE_INTERVAL_MAX_DRIFT = 60
@@ -99,7 +101,10 @@ def update(browser, timeout):
     browser.get(RESUME_LIST_URL)
     visited_urls = set()
     while True:
-        for elem in browser.find_elements_by_xpath(UPDATE_BUTTON_XPATH):
+        elems = WebDriverWait(browser, timeout).until(
+            EC.visibility_of_all_elements_located((By.XPATH, UPDATE_BUTTON_XPATH))
+        )
+        for elem in elems:
             href = elem.get_attribute("href")
             logger.debug("Update link href = %s", repr(href))
             if href in visited_urls:
@@ -125,6 +130,18 @@ def login(browser, timeout):
         EC.url_matches(POST_LOGIN_URL_PATTERN)
     )
     logger.info('Successfully logged in!')
+
+def refresh(browser, timeout):
+    logger = logging.getLogger("REFRESH")
+    browser.get(RESUME_LIST_URL)
+    elem = WebDriverWait(browser, timeout).until(
+        EC.visibility_of_element_located((By.XPATH, CREATE_BUTTON_XPATH))
+    )
+    elem.click()
+    WebDriverWait(browser, timeout).until(
+        EC.url_matches(CREATE_URL_PATTERN)
+    )
+    logger.info('Session refreshed')
 
 def parse_args():
     def check_loglevel(arg):
@@ -309,6 +326,13 @@ def do_update(browser_factory, timeout):
     finally:
         browser.quit()
 
+def do_refresh(browser_factory, timeout):
+    browser = browser_factory.new()
+    try:
+        refresh(browser, timeout)
+    finally:
+        browser.quit()
+
 def update_loop(browser_factory, tracker, timeout):
     logger = logging.getLogger("EVLOOP")
     last_update = tracker.last_update()
@@ -324,7 +348,7 @@ def update_loop(browser_factory, tracker, timeout):
         try:
             if ev.what is ScheduledEvent.REFRESH:
                 logger.info("Refreshing session now!")
-                do_login(browser_factory, timeout)
+                do_refresh(browser_factory, timeout)
                 tracker.login(time())
             elif ev.what is ScheduledEvent.UPDATE:
                 logger.info("Updating CVs now!")
@@ -343,6 +367,7 @@ def main():
     mainlogger = setup_logger("MAIN", args.verbosity)
     setup_logger("UPDATE", args.verbosity)
     setup_logger("LOGIN", args.verbosity)
+    setup_logger("REFRESH", args.verbosity)
     setup_logger("EVLOOP", args.verbosity)
 
     os.makedirs(args.data_dir, mode=0o700, exist_ok=True)
