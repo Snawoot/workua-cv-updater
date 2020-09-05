@@ -39,8 +39,9 @@ Application will be running continously, updating all your CV's in random interv
 
 ```
 ~/.config/workua-cv-updater
-├── updater.db # SQLite database with last update timestamp
-└── profile    # browser profile
+├── updater.db  # SQLite database with last update timestamp
+├── profile     # browser profile
+└── screenshots # error screenshots
 ```
 
 ## Running on remote server

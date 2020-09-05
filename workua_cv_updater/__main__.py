@@ -7,11 +7,12 @@ import os
 import os.path
 import sqlite3
 import signal
-from time import sleep, time, ctime
+from time import sleep, time, ctime, localtime, strftime
 from random import randrange, random
 import collections
 from heapq import merge
 from contextlib import contextmanager
+import json
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -203,7 +204,7 @@ def parse_args():
     return parser.parse_args()
 
 class BrowserFactory:
-    def __init__(self, profile_dir, browser_type, headless=True):
+    def __init__(self, profile_dir, screenshot_dir, browser_type, headless=True):
         chrome_options = Options()
         # option below causes webdriver process remaining in memory
         # chrome_options.add_argument('--no-sandbox')
@@ -214,11 +215,16 @@ class BrowserFactory:
             chrome_options.add_argument('--headless')
         self._options = chrome_options
         self._driver = ChromeDriverManager(chrome_type=browser_type).install()
+        self._screenshot_dir = screenshot_dir
 
     def new(self):
         return webdriver.Chrome(
             self._driver,
             options=self._options)
+
+    @property
+    def screenshot_dir(self):
+        return self._screenshot_dir
 
 class UpdateTracker:
     def __init__(self, dbpath):
@@ -315,9 +321,18 @@ class Scheduler:
 
 @contextmanager
 def managed_browser(browser_factory):
+    logger = logging.getLogger("GUARD")
     browser = browser_factory.new()
     try:
         yield browser
+    except WebDriverException as exc:
+        logger.warning("WebDriver exception occured: %s. Saving essential data...", str(exc))
+        logger.warning("Cookies: \n%s", json.dumps(browser.get_cookies(), indent=4))
+        ss_filename = strftime("err-%Y-%m-%d-%H-%M-%S.png", localtime())
+        ss_path = os.path.join(browser_factory.screenshot_dir, ss_filename)
+        browser.save_screenshot(ss_path)
+        logger.warning("Screenshot saved to %s", ss_path)
+        raise
     finally:
         browser.quit()
 
@@ -342,12 +357,13 @@ def update_loop(browser_factory, tracker, timeout):
             elif ev.what is ScheduledEvent.UPDATE:
                 logger.info("Updating CVs now!")
                 with managed_browser(browser_factory) as browser:
-                    update(browser, timeout)
+                    try:
+                        update(browser, timeout)
+                    except WebDriverException as exc:
+                        raise
                 tracker.update(time())
         except KeyboardInterrupt:
             raise
-        except WebDriverException as exc:
-            logger.exception("Event %s handling failed: %s", ev.what.name, str(exc))
         except Exception as exc:
             logger.exception("Event %s handling failed: %s", ev.what.name, str(exc))
 
@@ -361,10 +377,13 @@ def main():
     setup_logger("LOGIN", args.verbosity)
     setup_logger("REFRESH", args.verbosity)
     setup_logger("EVLOOP", args.verbosity)
+    setup_logger("GUARD", args.verbosity)
 
-    os.makedirs(args.data_dir, mode=0o700, exist_ok=True)
-    profile_dir = os.path.join(args.data_dir, 'profile')
+    screenshot_dir = os.path.join(args.data_dir, "screenshots")
+    os.makedirs(screenshot_dir, mode=0o700, exist_ok=True)
+    profile_dir = os.path.join(args.data_dir, "profile")
     browser_factory = BrowserFactory(profile_dir,
+                                     screenshot_dir,
                                      args.browser.value,
                                      args.cmd is Command.update)
     db_path = os.path.join(args.data_dir, 'updater.db')
