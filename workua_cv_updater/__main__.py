@@ -333,6 +333,8 @@ def managed_browser(browser_factory):
         browser.save_screenshot(ss_path)
         logger.warning("Screenshot saved to %s", ss_path)
         raise
+    else:
+        logger.debug("Cookies: \n%s", json.dumps(browser.get_cookies(), indent=4))
     finally:
         browser.quit()
 
