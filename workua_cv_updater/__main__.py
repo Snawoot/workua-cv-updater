@@ -42,6 +42,7 @@ SESSION_REFRESH_INTERVAL = 1 * 3600
 SESSION_REFRESH_INTERVAL_MIN_DRIFT = 10
 SESSION_REFRESH_INTERVAL_MAX_DRIFT = 60
 MANUAL_LOGIN_TIMEOUT = 3600
+REFRESH_WAIT = 10
 
 DB_INIT = [
     "CREATE TABLE IF NOT EXISTS update_ts (\n"
@@ -130,7 +131,7 @@ def login(browser, timeout):
     WebDriverWait(browser, timeout).until(
         EC.url_matches(POST_LOGIN_URL_PATTERN)
     )
-    sleep(10)
+    sleep(REFRESH_WAIT)
     logger.info('Successfully logged in!')
 
 def refresh(browser, timeout):
@@ -143,6 +144,7 @@ def refresh(browser, timeout):
     WebDriverWait(browser, timeout).until(
         EC.url_matches(CREATE_URL_PATTERN)
     )
+    sleep(REFRESH_WAIT)
     logger.info('Session refreshed')
 
 def parse_args():
