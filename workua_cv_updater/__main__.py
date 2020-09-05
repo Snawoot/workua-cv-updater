@@ -329,6 +329,7 @@ def managed_browser(browser_factory):
         yield browser
     except WebDriverException as exc:
         logger.warning("WebDriver exception occured: %s. Saving essential data...", str(exc))
+        logger.warning("Current URL: %s", browser.current_url)
         logger.warning("Cookies: \n%s", json.dumps(browser.get_cookies(), indent=4))
         ss_filename = strftime("err-%Y-%m-%d-%H-%M-%S.png", localtime())
         ss_path = os.path.join(browser_factory.screenshot_dir, ss_filename)
@@ -336,6 +337,7 @@ def managed_browser(browser_factory):
         logger.warning("Screenshot saved to %s", ss_path)
         raise
     else:
+        logger.debug("Current URL: %s", browser.current_url)
         logger.debug("Cookies: \n%s", json.dumps(browser.get_cookies(), indent=4))
     finally:
         browser.quit()
