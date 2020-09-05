@@ -131,6 +131,7 @@ def login(browser, timeout):
     WebDriverWait(browser, timeout).until(
         EC.url_matches(POST_LOGIN_URL_PATTERN)
     )
+    sleep(10)
     logger.info('Successfully logged in!')
 
 def refresh(browser, timeout):
