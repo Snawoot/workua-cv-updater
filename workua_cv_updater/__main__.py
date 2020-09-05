@@ -103,16 +103,14 @@ def update(browser, timeout):
     browser.get(RESUME_LIST_URL)
     visited_urls = set()
     while True:
-        elems = WebDriverWait(browser, timeout).until(
-            EC.visibility_of_all_elements_located((By.XPATH, UPDATE_BUTTON_XPATH))
-        )
-        for elem in elems:
+        for elem in browser.find_elements_by_xpath(UPDATE_BUTTON_XPATH):
             href = elem.get_attribute("href")
             logger.debug("Update link href = %s", repr(href))
             if href in visited_urls:
                 continue
             sleep(1 + 2 * random())
             elem.click()
+            visited_urls.add(href)
             logger.debug("Clicked!")
             WebDriverWait(browser, timeout).until(
                 EC.staleness_of(elem)
