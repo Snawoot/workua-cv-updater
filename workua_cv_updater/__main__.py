@@ -11,6 +11,7 @@ from time import sleep, time, ctime
 from random import randrange, random
 import collections
 from heapq import merge
+from contextlib import contextmanager
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -21,7 +22,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (TimeoutException,
                                         StaleElementReferenceException,
                                         NoSuchElementException,
-                                        ElementClickInterceptedException)
+                                        ElementClickInterceptedException,
+                                        WebDriverException)
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.utils import ChromeType
 
@@ -312,24 +314,11 @@ class Scheduler:
             key=lambda ev: ev.when
         )
 
-def do_login(browser_factory, timeout):
+@contextmanager
+def managed_browser(browser_factory):
     browser = browser_factory.new()
     try:
-        login(browser, timeout)
-    finally:
-        browser.quit()
-
-def do_update(browser_factory, timeout):
-    browser = browser_factory.new()
-    try:
-        update(browser, timeout)
-    finally:
-        browser.quit()
-
-def do_refresh(browser_factory, timeout):
-    browser = browser_factory.new()
-    try:
-        refresh(browser, timeout)
+        yield browser
     finally:
         browser.quit()
 
@@ -348,14 +337,18 @@ def update_loop(browser_factory, tracker, timeout):
         try:
             if ev.what is ScheduledEvent.REFRESH:
                 logger.info("Refreshing session now!")
-                do_refresh(browser_factory, timeout)
+                with managed_browser(browser_factory) as browser:
+                    refresh(browser, timeout)
                 tracker.login(time())
             elif ev.what is ScheduledEvent.UPDATE:
                 logger.info("Updating CVs now!")
-                do_update(browser_factory, timeout)
+                with managed_browser(browser_factory) as browser:
+                    update(browser, timeout)
                 tracker.update(time())
         except KeyboardInterrupt:
             raise
+        except WebDriverException as exc:
+            logger.exception("Event %s handling failed: %s", ev.what.name, str(exc))
         except Exception as exc:
             logger.exception("Event %s handling failed: %s", ev.what.name, str(exc))
 
@@ -384,7 +377,8 @@ def main():
             mainlogger.info("Login mode. Please enter your credentials in opened "
                             "browser window.")
             try:
-                do_login(browser_factory, MANUAL_LOGIN_TIMEOUT)
+                with managed_browser(browser_factory) as browser:
+                    login(browser, MANUAL_LOGIN_TIMEOUT)
                 tracker.login(time())
             except KeyboardInterrupt:
                 mainlogger.warning("Interrupted!")
